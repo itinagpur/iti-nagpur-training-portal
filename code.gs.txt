@@ -1,0 +1,1201 @@
+// ============================================
+// TRAINING UTILITY PORTAL - BACKEND
+// Government ITI Nagpur - Year 2025 Batch
+// ============================================
+
+// Configuration - IMPORTANT: Update these values
+var CONFIG = {
+  SHEET_ID: '1uA5xUJ6ODNFin6LekbhrDGKr4JS7cY_b-_VdKn1bOiY',
+  SHEET_NAME: 'Sheet1', // Change this if your sheet has a different name
+  LOGS_SHEET_NAME: 'ActivityLogs',
+  TEMPLATE_FOLDER_ID: '', // Will be created automatically
+  OUTPUT_FOLDER_NAME: 'Bonafide Certificates 2025'
+};
+
+// Serve the web app
+function doGet(e) {
+  // Test mode
+  if (e && e.parameter && e.parameter.test === 'true') {
+    return HtmlService.createHtmlOutputFromFile('TestPage')
+      .setTitle('Connection Test - Training Portal');
+  }
+  
+  // Normal portal
+  var template = HtmlService.createTemplateFromFile('Index');
+  return template.evaluate()
+    .setTitle('Training Utility Portal - Govt ITI Nagpur')
+    .setFaviconUrl('https://www.iti.gov.in/sites/all/themes/mhrdresponsive/images/emblem-dark.png')
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1');
+}
+
+// Include HTML files
+function include(filename) {
+  return HtmlService.createHtmlOutputFromFile(filename).getContent();
+}
+
+// Alternative include function if case-sensitive issues occur
+function includeFile(filename) {
+  return HtmlService.createHtmlOutputFromFile(filename).getContent();
+}
+
+// ============================================
+// TRAINEE DATA FUNCTIONS
+// ============================================
+
+/**
+ * Test function to check sheet access
+ */
+function testSheetAccess() {
+  try {
+    var sheet = SpreadsheetApp.openById(CONFIG.SHEET_ID).getSheetByName(CONFIG.SHEET_NAME);
+    if (!sheet) {
+      return { 
+        success: false, 
+        message: 'Sheet not found. Please check SHEET_NAME in CONFIG. Available sheets: ' + 
+        SpreadsheetApp.openById(CONFIG.SHEET_ID).getSheets().map(function(s) { return s.getName(); }).join(', ')
+      };
+    }
+    var data = sheet.getDataRange().getValues();
+    return { 
+      success: true, 
+      message: 'Sheet access successful!', 
+      rows: data.length,
+      columns: data[0] ? data[0].length : 0,
+      headers: data[0] || []
+    };
+  } catch (error) {
+    return { success: false, message: 'Error: ' + error.toString() };
+  }
+}
+
+/**
+ * Get all trainee data - OPTIMIZED for 932 records
+ * Loads only essential fields to reduce data size
+ */
+function getAllTrainees() {
+  try {
+    var ss = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+    var sheet = ss.getSheetByName(CONFIG.SHEET_NAME);
+    
+    if (!sheet) {
+      return { success: false, message: 'Sheet not found' };
+    }
+    
+    var lastRow = sheet.getLastRow();
+    var totalRecords = lastRow - 1; // Exclude header
+    
+    // Get all essential columns for the portal
+    // A=Reg No, B=Admission Date, C=Name, D=Email, E=Mobile, F=DOB, G=Gender, 
+    // H=Caste, I=Caste Category, N=Trade
+    var regNos = sheet.getRange(2, 1, totalRecords, 1).getValues();           // A: Registration_Number
+    var admissionDates = sheet.getRange(2, 2, totalRecords, 1).getValues();   // B: Admission_Date
+    var names = sheet.getRange(2, 3, totalRecords, 1).getValues();            // C: Trainee_Name
+    var emails = sheet.getRange(2, 4, totalRecords, 1).getValues();           // D: Email_ID
+    var mobiles = sheet.getRange(2, 5, totalRecords, 1).getValues();          // E: Mobile_Number
+    var dobs = sheet.getRange(2, 6, totalRecords, 1).getValues();             // F: Date_Of_Birth
+    var genders = sheet.getRange(2, 7, totalRecords, 1).getValues();          // G: Gender
+    var castes = sheet.getRange(2, 8, totalRecords, 1).getValues();           // H: Caste
+    var casteCategories = sheet.getRange(2, 9, totalRecords, 1).getValues();  // I: Caste_Category
+    var trades = sheet.getRange(2, 14, totalRecords, 1).getValues();          // N: Trade
+    var completionYears = sheet.getRange(2, 26, totalRecords, 1).getValues(); // Z: Completion_Year
+    
+    var trainees = [];
+    for (var i = 0; i < totalRecords; i++) {
+      var regNo = regNos[i][0];
+      
+      // Only add rows with registration number
+      if (regNo) {
+        var trainee = {
+          Registration_Number: String(regNo),
+          Trainee_Name: String(names[i][0] || ''),
+          Trade: String(trades[i][0] || ''),
+          Email_ID: String(emails[i][0] || ''),
+          Mobile_Number: String(mobiles[i][0] || ''),
+          Gender: String(genders[i][0] || ''),
+          Caste: String(castes[i][0] || ''),
+          Caste_Category: String(casteCategories[i][0] || ''),
+          Completion_Year: String(completionYears[i][0] || '')
+        };
+        
+        // Handle dates
+        var admissionDate = admissionDates[i][0];
+        if (admissionDate instanceof Date) {
+          trainee.Admission_Date = Utilities.formatDate(admissionDate, 'Asia/Kolkata', 'yyyy-MM-dd');
+        } else {
+          trainee.Admission_Date = String(admissionDate || '');
+        }
+        
+        var dob = dobs[i][0];
+        if (dob instanceof Date) {
+          trainee.Date_Of_Birth = Utilities.formatDate(dob, 'Asia/Kolkata', 'yyyy-MM-dd');
+        } else {
+          trainee.Date_Of_Birth = String(dob || '');
+        }
+        
+        trainees.push(trainee);
+      }
+    }
+    
+    return {
+      success: true,
+      data: trainees,
+      totalCount: trainees.length,
+      headers: ['Registration_Number', 'Trainee_Name', 'Trade', 'Email_ID', 'Mobile_Number', 
+                'Date_Of_Birth', 'Gender', 'Caste', 'Caste_Category', 'Admission_Date', 'Completion_Year']
+    };
+    
+  } catch (e) {
+    return { success: false, message: String(e) };
+  }
+}
+
+/**
+ * Search trainees by registration number or name
+ */
+function searchTrainee(searchTerm) {
+  try {
+    var result = getAllTrainees();
+    if (!result.success) return result;
+    
+    var searchLower = searchTerm.toLowerCase().trim();
+    var filtered = result.data.filter(function(trainee) {
+      var regNo = (trainee.Registration_Number || '').toString().toLowerCase();
+      var name = (trainee.Trainee_Name || '').toString().toLowerCase();
+      return regNo.includes(searchLower) || name.includes(searchLower);
+    });
+    
+    return { success: true, data: filtered };
+  } catch (error) {
+    return { success: false, message: error.toString() };
+  }
+}
+
+/**
+ * Get trainee by registration number
+ */
+function getTraineeByRegNo(regNo) {
+  try {
+    var result = getAllTrainees();
+    if (!result.success) return result;
+    
+    var trainee = result.data.find(function(t) {
+      return t.Registration_Number.toString() === regNo.toString();
+    });
+    
+    if (!trainee) {
+      return { success: false, message: 'Trainee not found' };
+    }
+    
+    return { success: true, data: trainee };
+  } catch (error) {
+    return { success: false, message: error.toString() };
+  }
+}
+
+/**
+ * Get unique values for all columns (for filters)
+ * Excludes Trainee_Name and other specified fields
+ */
+function getFilterOptions() {
+  try {
+    var ss = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+    var sheet = ss.getSheetByName(CONFIG.SHEET_NAME);
+    
+    if (!sheet) {
+      return { success: false, message: 'Sheet not found' };
+    }
+    
+    // Fields to exclude from filters
+    var excludeFields = [
+      'Trainee_Name',
+      'AllotmentRoundID',
+      'Completion_Year',
+      'TradeCode',
+      'Mother_Name',
+      'Is_DST',
+      'Father_Guardian_Name'
+    ];
+    
+    // Get all headers from the sheet
+    var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    var lastRow = sheet.getLastRow();
+    
+    var options = {};
+    
+    // Process each column
+    for (var col = 0; col < headers.length; col++) {
+      var header = headers[col];
+      
+      // Skip excluded columns
+      if (excludeFields.indexOf(header) !== -1 || !header) {
+        continue;
+      }
+      
+      // Get all values for this column (excluding header)
+      var columnValues = sheet.getRange(2, col + 1, lastRow - 1, 1).getValues();
+      
+      // Get unique values
+      var uniqueValues = {};
+      for (var i = 0; i < columnValues.length; i++) {
+        var value = columnValues[i][0];
+        if (value !== null && value !== undefined && value !== '') {
+          // Convert to string for consistency
+          var strValue = String(value);
+          uniqueValues[strValue] = true;
+        }
+      }
+      
+      // Convert to sorted array
+      var sortedValues = Object.keys(uniqueValues).sort();
+      
+      // Only add if there are unique values
+      if (sortedValues.length > 0) {
+        options[header] = sortedValues;
+      }
+    }
+    
+    return { success: true, data: options };
+    
+  } catch (error) {
+    return { success: false, message: error.toString() };
+  }
+}
+
+/**
+ * Filter trainees based on multiple criteria
+ * Queries sheet directly for better performance
+ */
+function filterTrainees(filters) {
+  try {
+    var ss = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+    var sheet = ss.getSheetByName(CONFIG.SHEET_NAME);
+    
+    if (!sheet) {
+      return { success: false, message: 'Sheet not found' };
+    }
+    
+    // Get all data including headers
+    var allData = sheet.getDataRange().getValues();
+    var headers = allData[0];
+    
+    // Create header index map
+    var headerIndex = {};
+    for (var i = 0; i < headers.length; i++) {
+      headerIndex[headers[i]] = i;
+    }
+    
+    // Filter data rows
+    var filtered = [];
+    for (var row = 1; row < allData.length; row++) {
+      var rowData = allData[row];
+      var matchesAllFilters = true;
+      
+      // Check each filter
+      for (var filterKey in filters) {
+        if (filters[filterKey] && filters[filterKey] !== '') {
+          var colIndex = headerIndex[filterKey];
+          if (colIndex !== undefined) {
+            var cellValue = String(rowData[colIndex] || '');
+            var filterValue = String(filters[filterKey]);
+            
+            if (cellValue !== filterValue) {
+              matchesAllFilters = false;
+              break;
+            }
+          }
+        }
+      }
+      
+      // If matches all filters, add to results
+      if (matchesAllFilters) {
+        var trainee = {};
+        for (var j = 0; j < headers.length; j++) {
+          var value = rowData[j];
+          if (value instanceof Date) {
+            trainee[headers[j]] = Utilities.formatDate(value, 'Asia/Kolkata', 'yyyy-MM-dd');
+          } else {
+            trainee[headers[j]] = String(value || '');
+          }
+        }
+        filtered.push(trainee);
+      }
+    }
+    
+    return { 
+      success: true, 
+      data: filtered, 
+      count: filtered.length 
+    };
+    
+  } catch (error) {
+    return { success: false, message: error.toString() };
+  }
+}
+
+// ============================================
+// BONAFIDE CERTIFICATE GENERATION
+// ============================================
+
+/**
+ * Generate Bonafide Certificate PDF
+ */
+function generateBonafide(regNo, reason) {
+  try {
+    Logger.log('Starting generateBonafide for: ' + regNo);
+    
+    // Get trainee data
+    var traineeResult = getTraineeByRegNo(regNo);
+    if (!traineeResult.success) return traineeResult;
+    
+    var trainee = traineeResult.data;
+    
+    // Generate bonafide number
+    var bonafideNo = generateBonafideNumber();
+    
+    // Get or create output folder
+    var folder = getOrCreateFolder(CONFIG.OUTPUT_FOLDER_NAME);
+    
+    // Create Google Doc from template
+    var doc = createBonafideDocument(trainee, reason, bonafideNo);
+    
+    // Convert to PDF
+    var pdfBlob = doc.getAs('application/pdf');
+    var fileName = 'Bonafide_' + trainee.Registration_Number + '_' + trainee.Trainee_Name + '_' + new Date().getTime() + '.pdf';
+    var pdfFile = folder.createFile(pdfBlob.setName(fileName));
+    
+    // Make PDF publicly viewable (or adjust sharing as needed)
+    pdfFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    
+    // Log the activity
+    logBonafideIssue(trainee, reason, bonafideNo, pdfFile.getUrl());
+    
+    // Delete temporary document
+    DriveApp.getFileById(doc.getId()).setTrashed(true);
+    
+    Logger.log('Bonafide generated successfully');
+    
+    return {
+      success: true,
+      pdfUrl: pdfFile.getUrl(),
+      pdfId: pdfFile.getId(),
+      bonafideNo: bonafideNo,
+      fileName: fileName
+    };
+    
+  } catch (error) {
+    Logger.log('Error in generateBonafide: ' + error.toString());
+    return { success: false, message: error.toString() };
+  }
+}
+
+/**
+ * Create Bonafide Document - Professional Government Format
+ * Logo on LEFT with text wrapping, exact Word file format
+ */
+function createBonafideDocument(trainee, reason, bonafideNo) {
+  var doc = DocumentApp.create('Temp_Bonafide_' + new Date().getTime());
+  var body = doc.getBody();
+  body.clear();
+  
+  // Set margins
+  body.setMarginTop(36);
+  body.setMarginBottom(20);
+  body.setMarginLeft(72);
+  body.setMarginRight(72);
+  
+  // Create table for header (Logo LEFT, Text RIGHT)
+  var headerTable = body.appendTable();
+  var headerRow = headerTable.appendTableRow();
+  
+  // Left cell - Logo
+  var logoCell = headerRow.appendTableCell();
+  try {
+    var logoUrl = 'https://drive.google.com/uc?export=download&id=1THGAHDu8Rw8qtV7tQXW52wVFZ6uzdIZ3';
+    var logoBlob = UrlFetchApp.fetch(logoUrl).getBlob();
+    var logo = logoCell.appendImage(logoBlob);
+    logo.setWidth(80);
+    logo.setHeight(80);
+  } catch (e) {
+    Logger.log('Logo failed: ' + e);
+  }
+  logoCell.setWidth(100);
+  logoCell.setVerticalAlignment(DocumentApp.VerticalAlignment.TOP);
+  
+  // Right cell - Institute name and address
+  var textCell = headerRow.appendTableCell();
+  
+  // Institute name - CENTERED in cell
+  var instituteName = textCell.appendParagraph('संत जगनाडे महाराज शासकीय औद्योगिक प्रशिक्षण संस्था, नागपूर');
+  instituteName.setAlignment(DocumentApp.HorizontalAlignment.CENTER);
+  instituteName.editAsText().setBold(true).setFontSize(14);
+  
+  // Address - CENTERED in cell
+  var address = textCell.appendParagraph('दक्षिण अंबाझरी रोड, अंध विद्यालय समोर, श्रद्धानंद पेठ, नागपूर ४४००२२.');
+  address.setAlignment(DocumentApp.HorizontalAlignment.CENTER);
+  address.editAsText().setFontSize(11);
+  
+  textCell.setVerticalAlignment(DocumentApp.VerticalAlignment.CENTER);
+  
+  // Remove table borders
+  headerTable.setBorderWidth(0);
+  
+  // Contact line
+  var contact = body.appendParagraph('दूरध्वनी क्रमांक ०७१२-२४५८९२०.                                                            Email : iti.nagpur@dvet.gov.in');
+  contact.setAlignment(DocumentApp.HorizontalAlignment.CENTER);
+  contact.editAsText().setFontSize(10);
+  
+  // Separator line
+  var separator = body.appendParagraph('_________________________________________________________________________________');
+  separator.setAlignment(DocumentApp.HorizontalAlignment.CENTER);
+  separator.editAsText().setFontSize(10);
+  
+  body.appendParagraph('');
+  
+  // Bonafide Number (LEFT) and Date (RIGHT) - IN SAME LINE
+  var today = Utilities.formatDate(new Date(), 'Asia/Kolkata', 'dd/MM/yyyy');
+  var refTable = body.appendTable();
+  var refRow = refTable.appendTableRow();
+  
+  // Left cell - Bonafide Number
+  var bonafideCell = refRow.appendTableCell();
+  var bonafidePara = bonafideCell.appendParagraph('बोनाफाईड क्रमांक : ' + bonafideNo);
+  bonafidePara.setAlignment(DocumentApp.HorizontalAlignment.LEFT);
+  bonafidePara.editAsText().setFontSize(11);
+  
+  // Right cell - Date
+  var dateCell = refRow.appendTableCell();
+  var datePara = dateCell.appendParagraph('दिनांक: ' + today);
+  datePara.setAlignment(DocumentApp.HorizontalAlignment.RIGHT);
+  datePara.editAsText().setFontSize(11);
+  
+  // Remove table borders
+  refTable.setBorderWidth(0);
+  
+  body.appendParagraph('');
+  
+  // Title - CENTERED, BOLD
+  var title = body.appendParagraph('बोनाफाइड प्रमाणपत्र');
+  title.setAlignment(DocumentApp.HorizontalAlignment.CENTER);
+  title.editAsText().setBold(true).setFontSize(16);
+  
+  body.appendParagraph('');
+  
+  // Get data
+  var admissionYear = extractYear(trainee.Admission_Date);
+  var completionYear = trainee.Completion_Year || (admissionYear + 2);
+  var genderPrefix = getGenderPrefix(trainee.Gender);
+  var genderPronoun = getGenderPronoun(trainee.Gender);
+  var possessivePronoun = getGenderPossessive(trainee.Gender);
+  
+  // Content paragraphs - JUSTIFIED
+  var content1 = body.appendParagraph(
+    'प्रमाणित करण्यात येते कि ' + genderPrefix + ' ' + trainee.Trainee_Name + ' ' + 
+    genderPronoun + ' प्रशिक्षणार्थी या संस्थेत ' + trainee.Trade + ' ' +
+    'या व्यवसायात ऑगस्ट 2025 ते जुलै ' + completionYear + ' पर्यंत प्रशिक्षण घेत आहे.'
+  );
+  content1.editAsText().setFontSize(12);
+  content1.setAlignment(DocumentApp.HorizontalAlignment.JUSTIFY);
+  content1.setLineSpacing(1.5);
+  
+  var content2 = body.appendParagraph(
+    'सदर प्रशिक्षणार्थी सन ' + completionYear + ' पर्यंत प्रशिक्षण घेत असल्यामुळे ' + 
+    possessivePronoun + ' मूळ प्रमाणपत्र संस्थेत जमा आहे करीता ' + reason + ' साठी बोनाफाईड प्रमाणपत्र देण्यात येत आहे.'
+  );
+  content2.editAsText().setFontSize(12);
+  content2.setAlignment(DocumentApp.HorizontalAlignment.JUSTIFY);
+  content2.setLineSpacing(1.5);
+  
+  var note = body.appendParagraph('सदर बोनाफाईड हे दिलेल्या कामा करीताच वापरण्यात यावे.');
+  note.editAsText().setFontSize(12);
+  note.setLineSpacing(1.5);
+  
+  body.appendParagraph('');
+  
+  // Personal details
+  var dob = formatDate(trainee.Date_Of_Birth);
+  var dobPara = body.appendParagraph('जन्म दिनांक : ' + dob);
+  dobPara.editAsText().setFontSize(11);
+  
+  var castePara = body.appendParagraph('प्रवर्ग : ' + (trainee.Caste_Category || ''));
+  castePara.editAsText().setFontSize(11);
+  
+  body.appendParagraph('');
+  body.appendParagraph('');
+  body.appendParagraph('');
+  
+  // SIGNATURE - RIGHT SIDE, CENTERED within right area
+  // Create table for signature positioning
+  var signTable = body.appendTable();
+  var signRow = signTable.appendTableRow();
+  
+  // Left cell - Empty (pushes signature to right)
+  var leftEmptyCell = signRow.appendTableCell();
+  leftEmptyCell.appendParagraph('');
+  leftEmptyCell.setWidth(350); // Adjust to push signature right
+  
+  // Right cell - Signature block (centered within this cell)
+  var signCell = signRow.appendTableCell();
+  
+  var signLine1 = signCell.appendParagraph('उप प्राचार्य');
+  signLine1.setAlignment(DocumentApp.HorizontalAlignment.CENTER);
+  signLine1.editAsText().setFontSize(12);
+  
+  var signLine2 = signCell.appendParagraph('संत जगनाडे महाराज');
+  signLine2.setAlignment(DocumentApp.HorizontalAlignment.CENTER);
+  signLine2.editAsText().setBold(true).setFontSize(12);
+  
+  var signLine3 = signCell.appendParagraph('शासकीय औद्योगिक प्रशिक्षण संस्था,नागपूर');
+  signLine3.setAlignment(DocumentApp.HorizontalAlignment.CENTER);
+  signLine3.editAsText().setBold(true).setFontSize(12);
+  
+  signCell.setVerticalAlignment(DocumentApp.VerticalAlignment.CENTER);
+  
+  // Remove table borders
+  signTable.setBorderWidth(0);
+  
+  // Add space to push footer down
+  body.appendParagraph('');
+  body.appendParagraph('');
+  body.appendParagraph('');
+  body.appendParagraph('');
+  body.appendParagraph('');
+
+  // Footer - BOTTOM, 2mm from edge
+  var footer = body.appendParagraph('Training Utility Portal By Anand Kathalewar, Govt ITI Nagpur');
+  footer.setAlignment(DocumentApp.HorizontalAlignment.CENTER);
+  footer.editAsText().setFontSize(7).setItalic(true).setForegroundColor('#666666');
+  
+  doc.saveAndClose();
+  return doc;
+}
+
+/**
+ * Get gender-specific possessive pronoun (त्याचे for male, तिचे for female)
+ */
+function getGenderPossessive(gender) {
+  if (!gender) return 'त्याचे/तिचे';
+  var g = gender.toString().toLowerCase();
+  if (g.includes('female') || g.includes('f')) return 'तिचे';
+  if (g.includes('male') || g.includes('m')) return 'त्याचे';
+  return 'त्याचे/तिचे';
+}
+
+/**
+ * Get all available headers for PDF customization
+ */
+function getAvailableHeaders() {
+  try {
+    var ss = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+    var sheet = ss.getSheetByName(CONFIG.SHEET_NAME);
+    
+    if (!sheet) {
+      return { success: false, message: 'Sheet not found' };
+    }
+    
+    // Get all headers
+    var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    
+    // Filter out empty headers
+    var validHeaders = headers.filter(function(h) { return h && h.trim() !== ''; });
+    
+    return { success: true, data: validHeaders };
+  } catch (error) {
+    return { success: false, message: error.toString() };
+  }
+}
+
+/**
+ * Get gender-specific pronoun (हा for male, हि for female)
+ */
+function getGenderPronoun(gender) {
+  if (!gender) return 'हा/हि';
+  var g = gender.toString().toLowerCase();
+  if (g.includes('female') || g.includes('f')) return 'हि';
+  if (g.includes('male') || g.includes('m')) return 'हा';
+  return 'हा/हि';
+}
+
+/**
+ * Generate unique bonafide number
+ */
+function generateBonafideNumber() {
+  var year = new Date().getFullYear();
+  var timestamp = new Date().getTime().toString().slice(-6);
+  return 'ITI/NGP/BON/' + year + '/' + timestamp;
+}
+
+/**
+ * Get gender prefix
+ */
+function getGenderPrefix(gender) {
+  if (!gender) return 'कुमार/कुमारी';
+  var g = gender.toString().toLowerCase();
+  if (g.includes('female') || g.includes('f')) return 'कुमारी';
+  if (g.includes('male') || g.includes('m')) return 'कुमार';
+  return 'कुमार/कुमारी';
+}
+
+/**
+ * Extract year from date
+ */
+function extractYear(dateValue) {
+  if (!dateValue) return 2025;
+  try {
+    var date = new Date(dateValue);
+    return date.getFullYear();
+  } catch (e) {
+    return 2025;
+  }
+}
+
+/**
+ * Format date for display
+ */
+function formatDate(dateValue) {
+  if (!dateValue) return 'N/A';
+  try {
+    var date = new Date(dateValue);
+    return Utilities.formatDate(date, 'Asia/Kolkata', 'dd/MM/yyyy');
+  } catch (e) {
+    return dateValue.toString();
+  }
+}
+
+/**
+ * Get or create folder
+ */
+function getOrCreateFolder(folderName) {
+  var folders = DriveApp.getFoldersByName(folderName);
+  if (folders.hasNext()) {
+    return folders.next();
+  }
+  return DriveApp.createFolder(folderName);
+}
+
+// ============================================
+// ACTIVITY LOGGING
+// ============================================
+
+/**
+ * Log bonafide issue activity
+ */
+function logBonafideIssue(trainee, reason, bonafideNo, pdfUrl) {
+  try {
+    Logger.log('Starting logBonafideIssue...');
+    Logger.log('BonafideNo: ' + bonafideNo);
+    
+    var ss = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+    var logSheet = ss.getSheetByName(CONFIG.LOGS_SHEET_NAME);
+    
+    // Create logs sheet if it doesn't exist
+    if (!logSheet) {
+      Logger.log('Creating new ActivityLogs sheet...');
+      logSheet = ss.insertSheet(CONFIG.LOGS_SHEET_NAME);
+      logSheet.appendRow([
+        'Timestamp',
+        'Bonafide_Number',
+        'Registration_Number',
+        'Trainee_Name',
+        'Trade',
+        'Reason',
+        'Issue_Date',
+        'PDF_URL',
+        'Clerk_Email'
+      ]);
+      
+      // Format header
+      var headerRange = logSheet.getRange(1, 1, 1, 9);
+      headerRange.setBackground('#1a73e8');
+      headerRange.setFontColor('#ffffff');
+      headerRange.setFontWeight('bold');
+      Logger.log('ActivityLogs sheet created');
+    }
+    
+    var timestamp = new Date();
+    var issueDate = Utilities.formatDate(timestamp, 'Asia/Kolkata', 'dd/MM/yyyy');
+    var clerkEmail = Session.getActiveUser().getEmail();
+    
+    var rowData = [
+      timestamp,
+      bonafideNo,
+      trainee.Registration_Number || '',
+      trainee.Trainee_Name || '',
+      trainee.Trade || '',
+      reason || '',
+      issueDate,
+      pdfUrl || '',
+      clerkEmail
+    ];
+    
+    Logger.log('Appending row to ActivityLogs...');
+    logSheet.appendRow(rowData);
+    Logger.log('Row appended successfully. Last row: ' + logSheet.getLastRow());
+    
+    return { success: true, message: 'Logged successfully' };
+  } catch (error) {
+    Logger.log('Error in logBonafideIssue: ' + error.toString());
+    return { success: false, message: error.toString() };
+  }
+}
+
+/**
+ * Get all activity logs
+ */
+function getActivityLogs() {
+  try {
+    var ss = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+    var logSheet = ss.getSheetByName(CONFIG.LOGS_SHEET_NAME);
+    
+    if (!logSheet) {
+      // Create the sheet if it doesn't exist
+      logSheet = ss.insertSheet(CONFIG.LOGS_SHEET_NAME);
+      logSheet.appendRow([
+        'Timestamp',
+        'Bonafide_Number',
+        'Registration_Number',
+        'Trainee_Name',
+        'Trade',
+        'Reason',
+        'Issue_Date',
+        'PDF_URL',
+        'Clerk_Email'
+      ]);
+      
+      // Format header
+      var headerRange = logSheet.getRange(1, 1, 1, 9);
+      headerRange.setBackground('#1a73e8');
+      headerRange.setFontColor('#ffffff');
+      headerRange.setFontWeight('bold');
+      
+      Logger.log('ActivityLogs sheet created');
+      return { success: true, data: [] };
+    }
+    
+    var data = logSheet.getDataRange().getValues();
+    Logger.log('ActivityLogs rows: ' + data.length);
+    
+    if (data.length < 2) {
+      return { success: true, data: [] };
+    }
+    
+    var headers = data[0];
+    var logs = [];
+    
+    for (var i = 1; i < data.length; i++) {
+      var log = {};
+      for (var j = 0; j < headers.length; j++) {
+        var value = data[i][j];
+        // Format dates and timestamps
+        if (headers[j] === 'Timestamp' && value instanceof Date) {
+          log[headers[j]] = Utilities.formatDate(value, 'Asia/Kolkata', 'dd/MM/yyyy HH:mm:ss');
+        } else {
+          log[headers[j]] = value;
+        }
+      }
+      logs.push(log);
+    }
+    
+    // Sort by timestamp descending
+    logs.reverse();
+    
+    Logger.log('Returning ' + logs.length + ' logs');
+    return { success: true, data: logs };
+  } catch (error) {
+    Logger.log('Error in getActivityLogs: ' + error.toString());
+    return { success: false, message: error.toString() };
+  }
+}
+
+/**
+ * Test function - Check if ActivityLogs exists and has data
+ */
+function testActivityLogs() {
+  var ss = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var logSheet = ss.getSheetByName(CONFIG.LOGS_SHEET_NAME);
+  
+  if (!logSheet) {
+    Logger.log('ActivityLogs sheet does NOT exist');
+    return false;
+  }
+  
+  var lastRow = logSheet.getLastRow();
+  Logger.log('ActivityLogs sheet exists. Last row: ' + lastRow);
+  
+  if (lastRow > 1) {
+    var data = logSheet.getRange(2, 1, lastRow - 1, 9).getValues();
+    Logger.log('Number of log entries: ' + data.length);
+    Logger.log('Sample entry: ' + JSON.stringify(data[0]));
+  }
+  
+  return true;
+}
+
+// ============================================
+// EXPORT FUNCTIONS
+// ============================================
+
+/**
+ * Export filtered data to Excel file (downloads locally)
+ * WORKING FIX: Uses Google Sheets export URL to get Excel file
+ */
+function exportToSheet(data, filters) {
+  try {
+    Logger.log('exportToSheet called with ' + data.length + ' records');
+    
+    if (!data || data.length === 0) {
+      return { success: false, message: 'No data to export. Please apply filters first.' };
+    }
+    
+    // Create new spreadsheet
+    var ss = SpreadsheetApp.create('Filtered_Trainees_' + Utilities.formatDate(new Date(), 'Asia/Kolkata', 'yyyy-MM-dd_HHmmss'));
+    var sheet = ss.getActiveSheet();
+    sheet.setName('Filtered Data');
+    
+    // Get all headers from first record
+    var headers = Object.keys(data[0]);
+    Logger.log('Headers found: ' + headers.length);
+    
+    // Ensure Trainee_Name is first if it exists
+    var nameIndex = headers.indexOf('Trainee_Name');
+    if (nameIndex > 0) {
+      headers.splice(nameIndex, 1);
+      headers.unshift('Trainee_Name');
+    }
+    
+    // Add title row
+    sheet.appendRow(['Training Utility Portal - Filtered Trainee Data']);
+    sheet.getRange(1, 1, 1, headers.length).merge();
+    sheet.getRange(1, 1).setFontSize(14).setFontWeight('bold').setHorizontalAlignment('center');
+    
+    // Add generation info
+    sheet.appendRow(['Generated on: ' + Utilities.formatDate(new Date(), 'Asia/Kolkata', 'dd/MM/yyyy HH:mm:ss'), '', '', '']);
+    sheet.appendRow(['Total Records: ' + data.length, '', '', '']);
+    
+    // Add filter info if exists
+    var hasFilters = false;
+    for (var key in filters) {
+      if (filters[key] && String(filters[key]).trim() !== '') {
+        if (!hasFilters) {
+          sheet.appendRow(['Applied Filters:', '', '', '']);
+          hasFilters = true;
+        }
+        sheet.appendRow(['  ' + key + ':', String(filters[key]), '', '']);
+      }
+    }
+    
+    // Add separator row
+    sheet.appendRow(['─────────────────────────────────────', '', '', '']);
+    
+    // Add header row
+    var headerRow = [];
+    for (var i = 0; i < headers.length; i++) {
+      headerRow.push(String(headers[i]));
+    }
+    sheet.appendRow(headerRow);
+    
+    var headerRowNum = sheet.getLastRow();
+    var headerRange = sheet.getRange(headerRowNum, 1, 1, headers.length);
+    headerRange.setBackground('#1a73e8');
+    headerRange.setFontColor('#ffffff');
+    headerRange.setFontWeight('bold');
+    headerRange.setHorizontalAlignment('center');
+    
+    // Add data rows with complete sanitization
+    var rowsAdded = 0;
+    for (var i = 0; i < data.length; i++) {
+      var row = [];
+      
+      for (var j = 0; j < headers.length; j++) {
+        var value = data[i][headers[j]];
+        var sanitizedValue = '';
+        
+        if (value === null || value === undefined) {
+          sanitizedValue = '';
+        } else if (value instanceof Date) {
+          sanitizedValue = Utilities.formatDate(value, 'Asia/Kolkata', 'dd/MM/yyyy');
+        } else if (typeof value === 'object') {
+          sanitizedValue = JSON.stringify(value);
+        } else if (typeof value === 'boolean') {
+          sanitizedValue = value ? 'Yes' : 'No';
+        } else if (typeof value === 'number') {
+          sanitizedValue = String(value);
+        } else {
+          sanitizedValue = String(value);
+        }
+        
+        row.push(sanitizedValue);
+      }
+      
+      // Verify row length
+      if (row.length !== headers.length) {
+        while (row.length < headers.length) {
+          row.push('');
+        }
+        row = row.slice(0, headers.length);
+      }
+      
+      try {
+        sheet.appendRow(row);
+        rowsAdded++;
+      } catch (e) {
+        Logger.log('Error appending row ' + i + ': ' + e.toString());
+      }
+    }
+    
+    Logger.log('Successfully added ' + rowsAdded + ' data rows');
+    
+    // Auto-resize columns
+    for (var i = 1; i <= headers.length; i++) {
+      try {
+        sheet.autoResizeColumn(i);
+      } catch (e) {
+        // Ignore
+      }
+    }
+    
+    // Freeze header row
+    sheet.setFrozenRows(headerRowNum);
+    
+    // Flush to save
+    SpreadsheetApp.flush();
+    
+    // Get the file ID
+    var fileId = ss.getId();
+    
+    // Use Google Drive export URL to get Excel file
+    var exportUrl = 'https://docs.google.com/spreadsheets/d/' + fileId + '/export?format=xlsx';
+    
+    // Fetch the Excel file
+    var response = UrlFetchApp.fetch(exportUrl, {
+      headers: {
+        'Authorization': 'Bearer ' + ScriptApp.getOAuthToken()
+      }
+    });
+    
+    // Get the blob
+    var excelBlob = response.getBlob();
+    
+    // Convert to base64
+    var base64 = Utilities.base64Encode(excelBlob.getBytes());
+    var fileName = 'Trainees_Export_' + Utilities.formatDate(new Date(), 'Asia/Kolkata', 'yyyy-MM-dd_HHmmss') + '.xlsx';
+    
+    // Delete the temporary spreadsheet
+    DriveApp.getFileById(fileId).setTrashed(true);
+    
+    Logger.log('Export successful. File: ' + fileName);
+    return { 
+      success: true, 
+      base64: base64,
+      fileName: fileName,
+      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    };
+    
+  } catch (error) {
+    Logger.log('Export error: ' + error.toString());
+    Logger.log('Error stack: ' + error.stack);
+    return { success: false, message: 'Export failed: ' + error.toString() };
+  }
+}
+
+/**
+ * Export filtered data to PDF with selected columns
+ * Returns base64 PDF for local download
+ */
+function exportFilteredDataToPDF(data, selectedColumns, filters) {
+  try {
+    if (!data || data.length === 0) {
+      return { success: false, message: 'No data to export' };
+    }
+    
+    if (!selectedColumns || selectedColumns.length === 0) {
+      return { success: false, message: 'No columns selected' };
+    }
+    
+    // Ensure Trainee_Name is always included
+    if (selectedColumns.indexOf('Trainee_Name') === -1) {
+      selectedColumns.unshift('Trainee_Name');
+    }
+    
+    // Create new Google Doc for PDF
+    var doc = DocumentApp.create('Filtered_Trainees_Report_' + new Date().getTime());
+    var body = doc.getBody();
+    body.clear();
+    
+    // Set margins
+    body.setMarginTop(36);
+    body.setMarginBottom(36);
+    body.setMarginLeft(36);
+    body.setMarginRight(36);
+    
+    // Add DVET logo
+    try {
+      var logoUrl = 'https://drive.google.com/uc?export=download&id=1THGAHDu8Rw8qtV7tQXW52wVFZ6uzdIZ3';
+      var logoBlob = UrlFetchApp.fetch(logoUrl).getBlob();
+      var logo = body.insertImage(0, logoBlob);
+      logo.setWidth(60);
+      logo.setHeight(60);
+    } catch (e) {
+      Logger.log('Logo failed: ' + e);
+    }
+    
+    body.appendParagraph('');
+    
+    // Add title
+    var title = body.appendParagraph('Trainee Data Report');
+    title.setAlignment(DocumentApp.HorizontalAlignment.CENTER);
+    title.editAsText().setBold(true).setFontSize(16);
+    
+    // Add institute name
+    var institute = body.appendParagraph('Government ITI Nagpur');
+    institute.setAlignment(DocumentApp.HorizontalAlignment.CENTER);
+    institute.editAsText().setFontSize(12);
+    
+    body.appendParagraph('');
+    
+    // Add generation date
+    var dateText = body.appendParagraph('Generated on: ' + Utilities.formatDate(new Date(), 'Asia/Kolkata', 'dd/MM/yyyy HH:mm'));
+    dateText.setAlignment(DocumentApp.HorizontalAlignment.RIGHT);
+    dateText.editAsText().setFontSize(10);
+    
+    // Add filter information
+    var hasFilters = false;
+    for (var key in filters) {
+      if (filters[key]) {
+        if (!hasFilters) {
+          body.appendParagraph('');
+          var filterTitle = body.appendParagraph('Applied Filters:');
+          filterTitle.editAsText().setBold(true).setFontSize(11);
+          hasFilters = true;
+        }
+        var filterLine = body.appendParagraph('• ' + key + ': ' + filters[key]);
+        filterLine.editAsText().setFontSize(10);
+      }
+    }
+    
+    body.appendParagraph('');
+    
+    // Add record count
+    var countText = body.appendParagraph('Total Records: ' + data.length);
+    countText.editAsText().setBold(true).setFontSize(11);
+    
+    body.appendParagraph('');
+    
+    // Create table
+    var tableData = [];
+    
+    // Add headers
+    tableData.push(selectedColumns);
+    
+    // Add data rows
+    for (var i = 0; i < data.length; i++) {
+      var row = [];
+      for (var j = 0; j < selectedColumns.length; j++) {
+        var value = data[i][selectedColumns[j]];
+        row.push(value !== undefined && value !== null ? String(value) : '');
+      }
+      tableData.push(row);
+    }
+    
+    // Add table to document
+    var table = body.appendTable(tableData);
+    
+    // Format table
+    table.setBorderWidth(1);
+    table.setBorderColor('#000000');
+    
+    // Format header row
+    var headerRow = table.getRow(0);
+    for (var i = 0; i < selectedColumns.length; i++) {
+      var cell = headerRow.getCell(i);
+      cell.setBackgroundColor('#1a73e8');
+      cell.editAsText().setForegroundColor('#ffffff').setBold(true).setFontSize(9);
+      cell.setPaddingTop(5);
+      cell.setPaddingBottom(5);
+    }
+    
+    // Format data rows
+    for (var i = 1; i < table.getNumRows(); i++) {
+      var row = table.getRow(i);
+      var bgColor = i % 2 === 0 ? '#f5f5f5' : '#ffffff';
+      for (var j = 0; j < selectedColumns.length; j++) {
+        var cell = row.getCell(j);
+        cell.setBackgroundColor(bgColor);
+        cell.editAsText().setFontSize(8);
+        cell.setPaddingTop(3);
+        cell.setPaddingBottom(3);
+      }
+    }
+    
+    // Add footer
+    body.appendParagraph('');
+    var footer = body.appendParagraph('Training Utility Portal By Anand Kathalewar, Govt ITI Nagpur');
+    footer.setAlignment(DocumentApp.HorizontalAlignment.CENTER);
+    footer.editAsText().setFontSize(8).setItalic(true);
+    
+    doc.saveAndClose();
+    
+    // Convert to PDF blob
+    var pdfBlob = DriveApp.getFileById(doc.getId()).getAs('application/pdf');
+    
+    // Convert blob to base64 for client-side download
+    var base64 = Utilities.base64Encode(pdfBlob.getBytes());
+    var fileName = 'Trainees_Report_' + Utilities.formatDate(new Date(), 'Asia/Kolkata', 'yyyy-MM-dd_HHmmss') + '.pdf';
+    
+    // Delete the temporary Doc file
+    DriveApp.getFileById(doc.getId()).setTrashed(true);
+    
+    return { 
+      success: true, 
+      base64: base64,
+      fileName: fileName,
+      mimeType: 'application/pdf'
+    };
+    
+  } catch (error) {
+    Logger.log('PDF Export error: ' + error.toString());
+    return { success: false, message: error.toString() };
+  }
+}
+
+/**
+ * Get current user email
+ */
+function getUserEmail() {
+  return Session.getActiveUser().getEmail();
+}
+
+/**
+ * Get app info
+ */
+function getAppInfo() {
+  return {
+    title: 'Training Utility Portal',
+    institute: 'Government ITI Nagpur',
+    year: '2025',
+    version: '1.0'
+  };
+}
+
+// DEBUG FUNCTION - Add this temporarily
+function testGetAllTrainees() {
+  var result = getAllTrainees();
+  Logger.log('Result type: ' + typeof result);
+  Logger.log('Result: ' + JSON.stringify(result));
+  return result;
+}
+
+// Even simpler test
+function getSimpleData() {
+  try {
+    return {
+      success: true,
+      message: 'Simple data works',
+      data: [
+        { name: 'Test 1', value: 'A' },
+        { name: 'Test 2', value: 'B' }
+      ]
+    };
+  } catch (e) {
+    return { success: false, message: e.toString() };
+  }
+}

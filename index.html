@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Training Utility Portal - ITI Nagpur</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <?!= include('Css'); ?>
+</head>
+<body>
+  <!-- Loading Screen -->
+  <div id="loadingScreen" class="loading-screen">
+    <div class="loader-container">
+      <div class="loader"></div>
+      <p>Loading Portal...</p>
+    </div>
+  </div>
+
+  <!-- Header -->
+  <header class="header">
+    <div class="container">
+      <div class="header-content">
+        <div class="logo-section">
+          <div class="logo-image" id="headerLogo">
+            <!-- Logo will be loaded via JavaScript to handle multiple sources -->
+            <div class="logo-circle">
+              <i class="fas fa-graduation-cap"></i>
+            </div>
+          </div>
+          <div class="logo-text">
+            <h1>Training Utility Portal</h1>
+            <p>Government ITI Nagpur - 2025 Batch</p>
+          </div>
+        </div>
+        <div class="user-section">
+          <span id="userEmail" class="user-email"></span>
+          <div class="user-avatar">
+            <i class="fas fa-user"></i>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <script>
+    // Load logo with fallback
+    (function() {
+      var logoContainer = document.getElementById('headerLogo');
+      var img = new Image();
+      
+      // Try multiple sources - optimized for Apps Script
+      var logoSources = [
+        'https://lh3.googleusercontent.com/d/1THGAHDu8Rw8qtV7tQXW52wVFZ6uzdIZ3',
+        'https://drive.google.com/thumbnail?id=1THGAHDu8Rw8qtV7tQXW52wVFZ6uzdIZ3&sz=w200',
+        'https://drive.google.com/uc?export=view&id=1THGAHDu8Rw8qtV7tQXW52wVFZ6uzdIZ3',
+        'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"%3E%3Ccircle cx="50" cy="50" r="40" fill="%234CAF50"/%3E%3Ctext x="50" y="60" text-anchor="middle" font-size="40" fill="white" font-weight="bold"%3ED%3C/text%3E%3C/svg%3E'
+      ];
+      
+      var currentIndex = 0;
+      
+      function tryLoadLogo() {
+        if (currentIndex >= logoSources.length) {
+          // All sources failed, keep fallback icon
+          return;
+        }
+        
+        img.onload = function() {
+          logoContainer.innerHTML = '';
+          img.style.width = '60px';
+          img.style.height = '60px';
+          img.style.objectFit = 'contain';
+          img.style.borderRadius = '50%';
+          logoContainer.appendChild(img);
+        };
+        
+        img.onerror = function() {
+          currentIndex++;
+          if (currentIndex < logoSources.length) {
+            tryLoadLogo();
+          }
+        };
+        
+        img.src = logoSources[currentIndex];
+      }
+      
+      tryLoadLogo();
+    })();
+  </script>
+
+  <!-- Navigation -->
+  <nav class="navigation">
+    <div class="container">
+      <ul class="nav-menu">
+        <li class="nav-item active" data-section="dashboard">
+          <i class="fas fa-home"></i>
+          <span>Dashboard</span>
+        </li>
+        <li class="nav-item" data-section="bonafide">
+          <i class="fas fa-certificate"></i>
+          <span>Bonafide Certificate</span>
+        </li>
+        <li class="nav-item" data-section="filters">
+          <i class="fas fa-filter"></i>
+          <span>Data Filters</span>
+        </li>
+        <li class="nav-item" data-section="logs">
+          <i class="fas fa-list-alt"></i>
+          <span>Activity Logs</span>
+        </li>
+      </ul>
+    </div>
+  </nav>
+
+  <!-- Main Content -->
+  <main class="main-content">
+    <div class="container">
+      
+      <!-- Dashboard Section -->
+      <section id="dashboard" class="section active">
+        <div class="section-header">
+          <h2><i class="fas fa-home"></i> Dashboard</h2>
+          <p>Welcome to the Training Utility Portal</p>
+        </div>
+
+        <div class="stats-grid">
+          <div class="stat-card glass-card">
+            <div class="stat-icon" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+              <i class="fas fa-users"></i>
+            </div>
+            <div class="stat-info">
+              <h3 id="totalTrainees">0</h3>
+              <p>Total Trainees</p>
+            </div>
+          </div>
+
+          <div class="stat-card glass-card">
+            <div class="stat-icon" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">
+              <i class="fas fa-certificate"></i>
+            </div>
+            <div class="stat-info">
+              <h3 id="totalBonafides">0</h3>
+              <p>Bonafides Issued</p>
+            </div>
+          </div>
+
+          <div class="stat-card glass-card">
+            <div class="stat-icon" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);">
+              <i class="fas fa-tools"></i>
+            </div>
+            <div class="stat-info">
+              <h3 id="totalTrades">0</h3>
+              <p>Active Trades</p>
+            </div>
+          </div>
+
+          <div class="stat-card glass-card">
+            <div class="stat-icon" style="background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);">
+              <i class="fas fa-calendar"></i>
+            </div>
+            <div class="stat-info">
+              <h3>2025</h3>
+              <p>Current Batch</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="quick-actions">
+          <h3>Quick Actions</h3>
+          <div class="action-grid">
+            <button class="action-btn glass-card" onclick="navigateToSection('bonafide')">
+              <i class="fas fa-certificate"></i>
+              <span>Generate Bonafide</span>
+            </button>
+            <button class="action-btn glass-card" onclick="navigateToSection('filters')">
+              <i class="fas fa-filter"></i>
+              <span>Filter Data</span>
+            </button>
+            <button class="action-btn glass-card" onclick="navigateToSection('logs')">
+              <i class="fas fa-history"></i>
+              <span>View Logs</span>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Bonafide Certificate Section -->
+      <section id="bonafide" class="section">
+        <div class="section-header">
+          <h2><i class="fas fa-certificate"></i> Bonafide Certificate Generation</h2>
+          <p>Search and generate bonafide certificates for trainees</p>
+        </div>
+
+        <div class="form-container glass-card">
+          <div class="search-section">
+            <h3>Search Trainee</h3>
+            <div class="search-box">
+              <i class="fas fa-search"></i>
+              <input type="text" 
+                     id="traineeSearch" 
+                     placeholder="Enter Registration Number or Trainee Name"
+                     autocomplete="off">
+              <div id="searchResults" class="search-results"></div>
+            </div>
+          </div>
+
+          <div id="traineeDetails" class="trainee-details" style="display: none;">
+            <h3>Trainee Details</h3>
+            <div class="details-grid">
+              <div class="detail-item">
+                <label>Registration Number:</label>
+                <span id="detailRegNo"></span>
+              </div>
+              <div class="detail-item">
+                <label>Name:</label>
+                <span id="detailName"></span>
+              </div>
+              <div class="detail-item">
+                <label>Trade:</label>
+                <span id="detailTrade"></span>
+              </div>
+              <div class="detail-item">
+                <label>Admission Date:</label>
+                <span id="detailAdmissionDate"></span>
+              </div>
+              <div class="detail-item">
+                <label>Date of Birth:</label>
+                <span id="detailDOB"></span>
+              </div>
+              <div class="detail-item">
+                <label>Gender:</label>
+                <span id="detailGender"></span>
+              </div>
+              <div class="detail-item">
+                <label>Caste Category:</label>
+                <span id="detailCaste"></span>
+              </div>
+              <div class="detail-item">
+                <label>Email:</label>
+                <span id="detailEmail"></span>
+              </div>
+            </div>
+
+            <div class="reason-section">
+              <label for="bonafideReason">Reason for Bonafide Certificate:</label>
+              <input type="text" 
+                     id="bonafideReason" 
+                     placeholder="e.g., शिष्यवृत्ती, बँक खाते, आधार कार्ड"
+                     class="reason-input">
+            </div>
+
+            <div class="action-buttons">
+              <button id="generateBtn" class="btn btn-primary" onclick="generateBonafideCertificate()">
+                <i class="fas fa-file-pdf"></i> Generate Bonafide Certificate
+              </button>
+              <button class="btn btn-secondary" onclick="clearSelection()">
+                <i class="fas fa-times"></i> Clear
+              </button>
+            </div>
+          </div>
+
+          <div id="generationResult" class="generation-result" style="display: none;"></div>
+        </div>
+      </section>
+
+      <!-- Data Filters Section -->
+      <section id="filters" class="section">
+        <div class="section-header">
+          <h2><i class="fas fa-filter"></i> Data Filters & Export</h2>
+          <p>Filter trainee data and export in multiple formats</p>
+        </div>
+
+        <div class="filter-container glass-card">
+          <h3>Apply Filters</h3>
+          <div id="filterFields" class="filter-fields"></div>
+          
+          <div class="filter-actions">
+            <button class="btn btn-primary" onclick="applyFilters()">
+              <i class="fas fa-check"></i> Apply Filters
+            </button>
+            <button class="btn btn-secondary" onclick="resetFilters()">
+              <i class="fas fa-undo"></i> Reset
+            </button>
+          </div>
+        </div>
+
+        <div id="filterResults" class="filter-results" style="display: none;">
+          <div class="results-header glass-card">
+            <h3>Filtered Results (<span id="resultCount">0</span> records)</h3>
+            <div class="export-buttons">
+              <button class="btn btn-success" onclick="exportToExcel()">
+                <i class="fas fa-file-excel"></i> Export to Excel
+              </button>
+              <button class="btn btn-info" onclick="exportToPDF()">
+                <i class="fas fa-file-pdf"></i> Export to PDF
+              </button>
+              <button class="btn btn-secondary" onclick="printResults()">
+                <i class="fas fa-print"></i> Print
+              </button>
+            </div>
+          </div>
+
+          <div class="table-container glass-card">
+            <div id="resultsTable"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Activity Logs Section -->
+      <section id="logs" class="section">
+        <div class="section-header">
+          <h2><i class="fas fa-list-alt"></i> Activity Logs</h2>
+          <p>View all bonafide certificate issuance history</p>
+        </div>
+
+        <div class="logs-container glass-card">
+          <div class="logs-header">
+            <h3>Recent Activity</h3>
+            <button class="btn btn-primary" onclick="refreshLogs()">
+              <i class="fas fa-sync"></i> Refresh
+            </button>
+          </div>
+          <div id="logsTable" class="table-container"></div>
+        </div>
+      </section>
+
+    </div>
+  </main>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="container">
+      <p>&copy; 2025 Government ITI Nagpur. All rights reserved.</p>
+      <p>Training Utility Portal v1.0 By Anand Kathalewar,</p>
+    </div>
+  </footer>
+
+  <!-- PDF Column Selection Modal -->
+  <div id="pdfColumnModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2><i class="fas fa-columns"></i> Select Columns for PDF Export</h2>
+        <span class="close-modal" onclick="closePdfColumnModal()">&times;</span>
+      </div>
+      <div class="modal-body">
+        <p>Select the columns you want to include in the PDF export:</p>
+        <div class="column-selection-actions">
+          <button class="btn btn-sm btn-secondary" onclick="selectAllPdfColumns()">
+            <i class="fas fa-check-double"></i> Select All
+          </button>
+          <button class="btn btn-sm btn-secondary" onclick="deselectAllPdfColumns()">
+            <i class="fas fa-times"></i> Deselect All
+          </button>
+        </div>
+        <div id="pdfColumnCheckboxes" class="column-checkboxes"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closePdfColumnModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="confirmPdfExport()">
+          <i class="fas fa-file-pdf"></i> Generate PDF
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Loading Spinner -->
+  <div id="loadingSpinner" class="loading-spinner" style="display: none;">
+    <div class="spinner"></div>
+    <p>Loading...</p>
+  </div>
+
+  <!-- Notification Toast -->
+  <div id="toast" class="toast"></div>
+
+  <?!= include('Javascript'); ?>
+</body>
+</html>

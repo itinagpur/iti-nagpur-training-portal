@@ -1,0 +1,777 @@
+<script>
+// ============================================
+// TRAINING UTILITY PORTAL - CLIENT LOGIC
+// ============================================
+
+var allTrainees = [];
+var selectedTrainee = null;
+var filterOptions = {};
+var activityLogs = [];
+var currentFilters = {};
+
+// ============================================
+// INITIALIZATION
+// ============================================
+
+window.addEventListener('DOMContentLoaded', function() {
+  initializeApp();
+});
+
+function initializeApp() {
+  console.log('Initializing app...');
+  
+  // Load user info
+  google.script.run
+    .withSuccessHandler(displayUserEmail)
+    .withFailureHandler(handleError)
+    .getUserEmail();
+  
+  // Load all data
+  loadAllData();
+  
+  // Setup event listeners
+  setupEventListeners();
+  
+  // Hide loading screen after delay
+  setTimeout(function() {
+    document.getElementById('loadingScreen').classList.add('hidden');
+  }, 1500);
+}
+
+function loadAllData() {
+  console.log('Loading all data...');
+  
+  // Load trainees
+  google.script.run
+    .withSuccessHandler(handleTraineesLoaded)
+    .withFailureHandler(function(error) {
+      console.error('Failed to load trainees:', error);
+      showToast('Failed to load trainees: ' + error.message, 'error');
+    })
+    .getAllTrainees();
+  
+  // Load filter options
+  google.script.run
+    .withSuccessHandler(handleFilterOptionsLoaded)
+    .withFailureHandler(function(error) {
+      console.error('Failed to load filter options:', error);
+      showToast('Failed to load filter options: ' + error.message, 'error');
+    })
+    .getFilterOptions();
+  
+  // Load activity logs
+  loadActivityLogs();
+}
+
+function displayUserEmail(email) {
+  console.log('User email:', email);
+  document.getElementById('userEmail').textContent = email || 'User';
+}
+
+function handleTraineesLoaded(result) {
+  console.log('Trainees loaded result:', result);
+  
+  if (!result) {
+    console.error('ERROR: Result is null or undefined!');
+    showToast('Error: No response from server. Please check permissions.', 'error');
+    return;
+  }
+  
+  if (result.success) {
+    allTrainees = result.data || [];
+    console.log('Total trainees loaded:', allTrainees.length);
+    console.log('Total in database:', result.totalCount || allTrainees.length);
+    
+    // Update dashboard with actual total count
+    document.getElementById('totalTrainees').textContent = result.totalCount || allTrainees.length;
+    
+    updateDashboardStats();
+    
+    var message = 'Loaded ' + allTrainees.length + ' trainees';
+    if (result.totalCount && result.totalCount > allTrainees.length) {
+      message += ' (showing first ' + allTrainees.length + ' of ' + result.totalCount + ' total)';
+    }
+    showToast(message, 'success');
+  } else {
+    console.error('Error loading trainees:', result.message);
+    showToast('Error loading trainee data: ' + result.message, 'error');
+    // Show debug info if available
+    if (result.availableSheets) {
+      console.log('Available sheets:', result.availableSheets);
+    }
+  }
+}
+
+function handleFilterOptionsLoaded(result) {
+  console.log('Filter options loaded:', result);
+  
+  if (!result) {
+    console.error('ERROR: Result is null or undefined!');
+    showToast('Error: No response from server for filters.', 'error');
+    return;
+  }
+  
+  if (result.success) {
+    filterOptions = result.data || {};
+    console.log('Filter options count:', Object.keys(filterOptions).length);
+    buildFilterFields();
+  } else {
+    console.error('Error loading filter options:', result.message);
+    showToast('Error loading filter options: ' + result.message, 'error');
+  }
+}
+
+function loadActivityLogs() {
+  google.script.run
+    .withSuccessHandler(function(result) {
+      if (result.success) {
+        activityLogs = result.data || [];
+        console.log('Activity logs loaded:', activityLogs.length);
+        updateDashboardStats();
+        displayActivityLogs();
+      }
+    })
+    .withFailureHandler(handleError)
+    .getActivityLogs();
+}
+
+// ============================================
+// NAVIGATION
+// ============================================
+
+function setupEventListeners() {
+  // Navigation
+  var navItems = document.querySelectorAll('.nav-item');
+  for (var i = 0; i < navItems.length; i++) {
+    navItems[i].addEventListener('click', function() {
+      var section = this.getAttribute('data-section');
+      navigateToSection(section);
+    });
+  }
+  
+  // Search with debounce
+  var searchTimeout;
+  var searchInput = document.getElementById('traineeSearch');
+  if (searchInput) {
+    searchInput.addEventListener('input', function() {
+      clearTimeout(searchTimeout);
+      var searchValue = this.value;
+      searchTimeout = setTimeout(function() {
+        performSearch(searchValue);
+      }, 300);
+    });
+    
+    // Close search results when clicking outside
+    document.addEventListener('click', function(e) {
+      if (!searchInput.contains(e.target)) {
+        document.getElementById('searchResults').classList.remove('show');
+      }
+    });
+  }
+}
+
+function navigateToSection(sectionName) {
+  // Update active nav item
+  var navItems = document.querySelectorAll('.nav-item');
+  for (var i = 0; i < navItems.length; i++) {
+    navItems[i].classList.remove('active');
+    if (navItems[i].getAttribute('data-section') === sectionName) {
+      navItems[i].classList.add('active');
+    }
+  }
+  
+  // Show active section
+  var sections = document.querySelectorAll('.section');
+  for (var i = 0; i < sections.length; i++) {
+    sections[i].classList.remove('active');
+  }
+  document.getElementById(sectionName).classList.add('active');
+  
+  // Load section-specific data
+  if (sectionName === 'logs') {
+    loadActivityLogs();
+  }
+}
+
+// ============================================
+// DASHBOARD
+// ============================================
+
+function updateDashboardStats() {
+  // Total trainees
+  document.getElementById('totalTrainees').textContent = allTrainees.length;
+  
+  // Total bonafides issued
+  document.getElementById('totalBonafides').textContent = activityLogs.length;
+  
+  // Total trades
+  var trades = {};
+  for (var i = 0; i < allTrainees.length; i++) {
+    var trade = allTrainees[i].Trade;
+    if (trade) {
+      trades[trade] = true;
+    }
+  }
+  document.getElementById('totalTrades').textContent = Object.keys(trades).length;
+}
+
+// ============================================
+// BONAFIDE CERTIFICATE GENERATION
+// ============================================
+
+function performSearch(searchTerm) {
+  var resultsDiv = document.getElementById('searchResults');
+  
+  if (searchTerm.trim().length < 2) {
+    resultsDiv.classList.remove('show');
+    return;
+  }
+  
+  console.log('Searching for:', searchTerm);
+  
+  google.script.run
+    .withSuccessHandler(function(result) {
+      console.log('Search result:', result);
+      if (result.success && result.data.length > 0) {
+        displaySearchResults(result.data);
+      } else {
+        resultsDiv.innerHTML = '<div class="search-result-item" style="color: #5f6368; text-align: center;">No results found</div>';
+        resultsDiv.classList.add('show');
+      }
+    })
+    .withFailureHandler(handleError)
+    .searchTrainee(searchTerm);
+}
+
+function displaySearchResults(results) {
+  var resultsDiv = document.getElementById('searchResults');
+  resultsDiv.innerHTML = '';
+  
+  for (var i = 0; i < results.length; i++) {
+    var trainee = results[i];
+    var item = document.createElement('div');
+    item.className = 'search-result-item';
+    item.innerHTML = '<strong>' + trainee.Trainee_Name + '</strong>' +
+                     '<span>Reg No: ' + trainee.Registration_Number + ' | Trade: ' + trainee.Trade + '</span>';
+    item.onclick = (function(t) {
+      return function() {
+        selectTrainee(t);
+      };
+    })(trainee);
+    resultsDiv.appendChild(item);
+  }
+  
+  resultsDiv.classList.add('show');
+}
+
+function selectTrainee(trainee) {
+  console.log('Selected trainee:', trainee);
+  selectedTrainee = trainee;
+  
+  // Hide search results
+  document.getElementById('searchResults').classList.remove('show');
+  
+  // Update search input
+  document.getElementById('traineeSearch').value = trainee.Registration_Number + ' - ' + trainee.Trainee_Name;
+  
+  // Display trainee details
+  document.getElementById('detailRegNo').textContent = trainee.Registration_Number || 'N/A';
+  document.getElementById('detailName').textContent = trainee.Trainee_Name || 'N/A';
+  document.getElementById('detailTrade').textContent = trainee.Trade || 'N/A';
+  document.getElementById('detailAdmissionDate').textContent = formatDate(trainee.Admission_Date);
+  document.getElementById('detailDOB').textContent = formatDate(trainee.Date_Of_Birth);
+  document.getElementById('detailGender').textContent = trainee.Gender || 'N/A';
+  document.getElementById('detailCaste').textContent = trainee.Caste_Category || 'N/A';
+  document.getElementById('detailEmail').textContent = trainee.Email_ID || 'N/A';
+  
+  // Show details section
+  document.getElementById('traineeDetails').style.display = 'block';
+  document.getElementById('generationResult').style.display = 'none';
+  
+  // Clear reason
+  document.getElementById('bonafideReason').value = '';
+}
+
+function clearSelection() {
+  selectedTrainee = null;
+  document.getElementById('traineeSearch').value = '';
+  document.getElementById('traineeDetails').style.display = 'none';
+  document.getElementById('generationResult').style.display = 'none';
+  document.getElementById('bonafideReason').value = '';
+}
+
+function generateBonafideCertificate() {
+  if (!selectedTrainee) {
+    showToast('Please select a trainee first', 'error');
+    return;
+  }
+  
+  var reason = document.getElementById('bonafideReason').value.trim();
+  if (!reason) {
+    showToast('Please enter a reason for the bonafide certificate', 'error');
+    return;
+  }
+  
+  var generateBtn = document.getElementById('generateBtn');
+  generateBtn.disabled = true;
+  generateBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generating...';
+  
+  console.log('Generating bonafide for:', selectedTrainee.Registration_Number, 'Reason:', reason);
+  
+  google.script.run
+    .withSuccessHandler(function(result) {
+      generateBtn.disabled = false;
+      generateBtn.innerHTML = '<i class="fas fa-file-pdf"></i> Generate Bonafide Certificate';
+      
+      console.log('Generation result:', result);
+      
+      if (result.success) {
+        displayGenerationResult(result);
+        showToast('Bonafide certificate generated successfully!', 'success');
+        loadActivityLogs(); // Refresh logs
+      } else {
+        showToast('Error: ' + result.message, 'error');
+      }
+    })
+    .withFailureHandler(function(error) {
+      generateBtn.disabled = false;
+      generateBtn.innerHTML = '<i class="fas fa-file-pdf"></i> Generate Bonafide Certificate';
+      handleError(error);
+    })
+    .generateBonafide(selectedTrainee.Registration_Number, reason);
+}
+
+function displayGenerationResult(result) {
+  var resultDiv = document.getElementById('generationResult');
+  resultDiv.className = 'generation-result';
+  resultDiv.innerHTML = '<h4><i class="fas fa-check-circle"></i> Certificate Generated Successfully!</h4>' +
+    '<p><strong>Bonafide Number:</strong> ' + result.bonafideNo + '</p>' +
+    '<p><strong>Trainee:</strong> ' + selectedTrainee.Trainee_Name + '</p>' +
+    '<p><strong>Registration Number:</strong> ' + selectedTrainee.Registration_Number + '</p>' +
+    '<p><strong>File Name:</strong> ' + result.fileName + '</p>' +
+    '<a href="' + result.pdfUrl + '" target="_blank">' +
+    '<i class="fas fa-external-link-alt"></i> Open PDF Certificate</a>';
+  resultDiv.style.display = 'block';
+}
+
+// ============================================
+// DATA FILTERS
+// ============================================
+
+function buildFilterFields() {
+  var container = document.getElementById('filterFields');
+  container.innerHTML = '';
+  
+  var keys = Object.keys(filterOptions);
+  for (var i = 0; i < keys.length; i++) {
+    var fieldName = keys[i];
+    var field = document.createElement('div');
+    field.className = 'filter-field';
+    
+    var label = document.createElement('label');
+    label.textContent = formatFieldName(fieldName);
+    
+    var select = document.createElement('select');
+    select.id = 'filter_' + fieldName;
+    
+    // Add default option
+    var defaultOption = document.createElement('option');
+    defaultOption.value = '';
+    defaultOption.textContent = 'All';
+    select.appendChild(defaultOption);
+    
+    // Add options
+    var options = filterOptions[fieldName];
+    for (var j = 0; j < options.length; j++) {
+      var option = document.createElement('option');
+      option.value = options[j];
+      option.textContent = options[j];
+      select.appendChild(option);
+    }
+    
+    field.appendChild(label);
+    field.appendChild(select);
+    container.appendChild(field);
+  }
+}
+
+function formatFieldName(fieldName) {
+  return fieldName
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, function(l) { return l.toUpperCase(); });
+}
+
+function applyFilters() {
+  window.currentFilters = {};
+  
+  // Collect filter values
+  var keys = Object.keys(filterOptions);
+  for (var i = 0; i < keys.length; i++) {
+    var fieldName = keys[i];
+    var select = document.getElementById('filter_' + fieldName);
+    if (select && select.value) {
+      window.currentFilters[fieldName] = select.value;
+    }
+  }
+  
+  // Check if any filter is applied
+  if (Object.keys(window.currentFilters).length === 0) {
+    showToast('Please select at least one filter', 'error');
+    return;
+  }
+  
+  console.log('Applying filters:', window.currentFilters);
+  
+  // Call server to filter
+  google.script.run
+    .withSuccessHandler(function(result) {
+      console.log('Filter result:', result);
+      if (result.success) {
+        displayFilterResults(result.data);
+        document.getElementById('resultCount').textContent = result.count;
+        document.getElementById('filterResults').style.display = 'block';
+        showToast('Found ' + result.count + ' matching records', 'success');
+      } else {
+        showToast('Error: ' + result.message, 'error');
+      }
+    })
+    .withFailureHandler(handleError)
+    .filterTrainees(window.currentFilters);
+}
+
+function resetFilters() {
+  window.currentFilters = {};
+  var keys = Object.keys(filterOptions);
+  for (var i = 0; i < keys.length; i++) {
+    var fieldName = keys[i];
+    var select = document.getElementById('filter_' + fieldName);
+    if (select) {
+      select.value = '';
+    }
+  }
+  document.getElementById('filterResults').style.display = 'none';
+  showToast('Filters reset', 'success');
+}
+
+function displayFilterResults(data) {
+  // Store globally for PDF export
+  window.filteredData = data;
+  
+  var container = document.getElementById('resultsTable');
+  
+  if (data.length === 0) {
+    container.innerHTML = '<p style="text-align: center; padding: 30px; color: #5f6368;">No records found</p>';
+    return;
+  }
+  
+  // Get all column headers
+  var headers = Object.keys(data[0]);
+  
+  // Build table
+  var html = '<table><thead><tr>';
+  for (var i = 0; i < headers.length; i++) {
+    html += '<th>' + formatFieldName(headers[i]) + '</th>';
+  }
+  html += '</tr></thead><tbody>';
+  
+  for (var i = 0; i < data.length; i++) {
+    var row = data[i];
+    html += '<tr>';
+    for (var j = 0; j < headers.length; j++) {
+      var header = headers[j];
+      var value = row[header];
+      var displayValue = header.indexOf('Date') !== -1 ? formatDate(value) : (value || 'N/A');
+      html += '<td>' + displayValue + '</td>';
+    }
+    html += '</tr>';
+  }
+  
+  html += '</tbody></table>';
+  container.innerHTML = html;
+}
+
+// ============================================
+// EXPORT FUNCTIONS
+// ============================================
+
+function exportToExcel() {
+  console.log('exportToExcel called');
+  console.log('window.filteredData:', window.filteredData);
+  console.log('window.currentFilters:', window.currentFilters);
+  
+  // Use stored filtered data
+  if (!window.filteredData || window.filteredData.length === 0) {
+    showToast('Please apply filters first to export data', 'warning');
+    return;
+  }
+  
+  showToast('Exporting ' + window.filteredData.length + ' records...', 'info');
+  
+  // Show loading spinner
+  document.getElementById('loadingSpinner').style.display = 'flex';
+  
+  google.script.run
+    .withSuccessHandler(function(result) {
+      document.getElementById('loadingSpinner').style.display = 'none';
+      
+      if (result.success) {
+        // Download Excel file locally using base64 data
+        const byteCharacters = atob(result.base64);
+        const byteNumbers = new Array(byteCharacters.length);
+        for (let i = 0; i < byteCharacters.length; i++) {
+          byteNumbers[i] = byteCharacters.charCodeAt(i);
+        }
+        const byteArray = new Uint8Array(byteNumbers);
+        const blob = new Blob([byteArray], { type: result.mimeType });
+        
+        // Create download link
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.style.display = 'none';
+        a.href = url;
+        a.download = result.fileName;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+        
+        showToast('Excel file downloaded successfully!', 'success');
+      } else {
+        showToast('Error exporting data: ' + result.message, 'error');
+      }
+    })
+    .withFailureHandler(function(error) {
+      document.getElementById('loadingSpinner').style.display = 'none';
+      console.error('Export failed:', error);
+      showToast('Error exporting data: ' + error.message, 'error');
+    })
+    .exportToSheet(window.filteredData, window.currentFilters || {});
+}
+
+// PDF Export with Column Selection
+let filteredDataForPdf = [];
+let allAvailableHeaders = [];
+
+function exportToPDF() {
+  if (!window.filteredData || window.filteredData.length === 0) {
+    showToast('Please apply filters first to generate PDF', 'warning');
+    return;
+  }
+  
+  filteredDataForPdf = window.filteredData;
+  
+  // Show loading
+  document.getElementById('loadingSpinner').style.display = 'flex';
+  
+  // Get all available headers
+  google.script.run
+    .withSuccessHandler(function(result) {
+      document.getElementById('loadingSpinner').style.display = 'none';
+      if (result.success) {
+        allAvailableHeaders = result.data;
+        showPdfColumnModal();
+      } else {
+        showToast('Error loading headers: ' + result.message, 'error');
+      }
+    })
+    .withFailureHandler(function(error) {
+      document.getElementById('loadingSpinner').style.display = 'none';
+      showToast('Error: ' + error.message, 'error');
+    })
+    .getAvailableHeaders();
+}
+
+function showPdfColumnModal() {
+  const modal = document.getElementById('pdfColumnModal');
+  const checkboxContainer = document.getElementById('pdfColumnCheckboxes');
+  
+  // Clear previous checkboxes
+  checkboxContainer.innerHTML = '';
+  
+  // Create checkbox for each header
+  allAvailableHeaders.forEach(function(header) {
+    const checkboxItem = document.createElement('div');
+    checkboxItem.className = 'checkbox-item';
+    
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.id = 'pdf_col_' + header.replace(/[^a-zA-Z0-9]/g, '_');
+    checkbox.value = header;
+    checkbox.checked = true; // Default: all selected
+    
+    const label = document.createElement('label');
+    label.htmlFor = checkbox.id;
+    label.textContent = header;
+    
+    checkboxItem.appendChild(checkbox);
+    checkboxItem.appendChild(label);
+    checkboxContainer.appendChild(checkboxItem);
+  });
+  
+  modal.style.display = 'block';
+}
+
+function closePdfColumnModal() {
+  document.getElementById('pdfColumnModal').style.display = 'none';
+}
+
+function selectAllPdfColumns() {
+  const checkboxes = document.querySelectorAll('#pdfColumnCheckboxes input[type="checkbox"]');
+  checkboxes.forEach(cb => cb.checked = true);
+}
+
+function deselectAllPdfColumns() {
+  const checkboxes = document.querySelectorAll('#pdfColumnCheckboxes input[type="checkbox"]');
+  checkboxes.forEach(cb => cb.checked = false);
+}
+
+function confirmPdfExport() {
+  const checkboxes = document.querySelectorAll('#pdfColumnCheckboxes input[type="checkbox"]:checked');
+  const selectedColumns = Array.from(checkboxes).map(cb => cb.value);
+  
+  if (selectedColumns.length === 0) {
+    showToast('Please select at least one column', 'warning');
+    return;
+  }
+  
+  closePdfColumnModal();
+  
+  // Show loading
+  document.getElementById('loadingSpinner').style.display = 'flex';
+  
+  // Generate PDF with selected columns
+  google.script.run
+    .withSuccessHandler(function(result) {
+      document.getElementById('loadingSpinner').style.display = 'none';
+      if (result.success) {
+        // Download PDF locally using base64 data
+        const byteCharacters = atob(result.base64);
+        const byteNumbers = new Array(byteCharacters.length);
+        for (let i = 0; i < byteCharacters.length; i++) {
+          byteNumbers[i] = byteCharacters.charCodeAt(i);
+        }
+        const byteArray = new Uint8Array(byteNumbers);
+        const blob = new Blob([byteArray], { type: result.mimeType });
+        
+        // Create download link
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.style.display = 'none';
+        a.href = url;
+        a.download = result.fileName;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+        
+        showToast('PDF downloaded successfully!', 'success');
+      } else {
+        showToast('Error generating PDF: ' + result.message, 'error');
+      }
+    })
+    .withFailureHandler(function(error) {
+      document.getElementById('loadingSpinner').style.display = 'none';
+      showToast('Error: ' + error.message, 'error');
+    })
+    .exportFilteredDataToPDF(filteredDataForPdf, selectedColumns, window.currentFilters || {});
+}
+
+function printResults() {
+  window.print();
+}
+
+// ============================================
+// ACTIVITY LOGS
+// ============================================
+
+function refreshLogs() {
+  loadActivityLogs();
+  showToast('Logs refreshed', 'success');
+}
+
+function displayActivityLogs() {
+  var container = document.getElementById('logsTable');
+  
+  if (activityLogs.length === 0) {
+    container.innerHTML = '<p style="text-align: center; padding: 30px; color: #5f6368;">No activity logs found</p>';
+    return;
+  }
+  
+  var html = '<table><thead><tr>';
+  html += '<th>Timestamp</th>';
+  html += '<th>Bonafide Number</th>';
+  html += '<th>Registration Number</th>';
+  html += '<th>Trainee Name</th>';
+  html += '<th>Trade</th>';
+  html += '<th>Reason</th>';
+  html += '<th>Issue Date</th>';
+  html += '<th>PDF</th>';
+  html += '</tr></thead><tbody>';
+  
+  for (var i = 0; i < activityLogs.length; i++) {
+    var log = activityLogs[i];
+    html += '<tr>';
+    html += '<td>' + formatDateTime(log.Timestamp) + '</td>';
+    html += '<td>' + (log.Bonafide_Number || 'N/A') + '</td>';
+    html += '<td>' + (log.Registration_Number || 'N/A') + '</td>';
+    html += '<td>' + (log.Trainee_Name || 'N/A') + '</td>';
+    html += '<td>' + (log.Trade || 'N/A') + '</td>';
+    html += '<td>' + (log.Reason || 'N/A') + '</td>';
+    html += '<td>' + (log.Issue_Date || 'N/A') + '</td>';
+    html += '<td><a href="' + log.PDF_URL + '" target="_blank" class="btn btn-primary" style="padding: 6px 12px; font-size: 12px;"><i class="fas fa-file-pdf"></i> View</a></td>';
+    html += '</tr>';
+  }
+  
+  html += '</tbody></table>';
+  container.innerHTML = html;
+}
+
+// ============================================
+// UTILITY FUNCTIONS
+// ============================================
+
+function formatDate(dateValue) {
+  if (!dateValue) return 'N/A';
+  try {
+    var date = new Date(dateValue);
+    return date.toLocaleDateString('en-IN');
+  } catch (e) {
+    return dateValue.toString();
+  }
+}
+
+function formatDateTime(dateValue) {
+  if (!dateValue) return 'N/A';
+  try {
+    var date = new Date(dateValue);
+    return date.toLocaleString('en-IN');
+  } catch (e) {
+    return dateValue.toString();
+  }
+}
+
+function showToast(message, type) {
+  var toast = document.getElementById('toast');
+  toast.textContent = message;
+  toast.className = 'toast ' + (type || 'success');
+  toast.classList.add('show');
+  
+  setTimeout(function() {
+    toast.classList.remove('show');
+  }, 3000);
+}
+
+function handleError(error) {
+  console.error('Error:', error);
+  showToast('An error occurred: ' + error.message, 'error');
+}
+
+// Prevent form submission on Enter key
+document.addEventListener('keypress', function(e) {
+  if (e.key === 'Enter' && e.target.tagName !== 'TEXTAREA') {
+    e.preventDefault();
+  }
+});
+
+console.log('Training Utility Portal - JavaScript loaded successfully!');
+</script>
